@@ -48,13 +48,46 @@ NSImage *imageFromApp(NSURL *URL, NSString *dataType, NSString *fileName) {
         NSTask *unzipTask = [NSTask new];
         [unzipTask setLaunchPath:@"/usr/bin/unzip"];
         [unzipTask setStandardOutput:[NSPipe pipe]];
-        [unzipTask setArguments:@[@"-p", [URL path], [NSString stringWithFormat:@"Payload/*.app/%@",fileName]]];
+        [unzipTask setArguments:@[@"-l", [URL path], [NSString stringWithFormat:@"Payload/*.app/%@*.png", fileName]]];
         [unzipTask launch];
         [unzipTask waitUntilExit];
-        
+		NSString *fileList = [[NSString alloc] initWithData:[[[unzipTask standardOutput] fileHandleForReading] readDataToEndOfFile] encoding:NSUTF8StringEncoding];
+		NSLog(@"Arguments: %@", unzipTask.arguments);
+		NSLog(@"resopnse code: %d", unzipTask.terminationStatus);
+		NSLog(@"fileList: %@", fileList);
+
+		NSError *error = nil;
+		// Find all .png file names excluding the path
+		NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"[^\\\\/:*?\"<>|]+.png" options:0 error:&error];
+		NSMutableArray *files = [NSMutableArray array];
+		[regex enumerateMatchesInString:fileList options:0 range:NSMakeRange(0, fileList.length) usingBlock:^(NSTextCheckingResult * _Nullable result, NSMatchingFlags flags, BOOL * _Nonnull stop) {
+			NSString *match = [fileList substringWithRange:result.range];
+			[files addObject:match];				
+		}];
+		NSLog(@"Files: %@", files);
+		fileName = [files firstObject];
+		// If more than one get the highest resolution
+		if ([files count] > 1) {
+			NSArray *matches = @[@"3x", @"2x"];
+			for (NSString *match in matches) {
+				NSPredicate *predicate = [NSPredicate predicateWithFormat:@"SELF contains[c] %@", match];
+				NSArray *results = [files filteredArrayUsingPredicate:predicate];
+				if ([results count]) {
+					fileName = [results firstObject];
+					break;
+				}
+			}
+		}
+		NSLog(@"File: %@", fileName);
+		unzipTask = [NSTask new];
+		[unzipTask setLaunchPath:@"/usr/bin/unzip"];
+		[unzipTask setStandardOutput:[NSPipe pipe]];
+		[unzipTask setArguments:@[@"-p", [URL path], [NSString stringWithFormat:@"Payload/*.app/%@", fileName]]];
+		[unzipTask launch];
+		[unzipTask waitUntilExit];
+
         appIcon = [[NSImage alloc] initWithData:[[[unzipTask standardOutput] fileHandleForReading] readDataToEndOfFile]];
     }
-    
     return appIcon;
 }
 
@@ -63,7 +96,11 @@ NSString *mainIconNameForApp(NSDictionary *appPropertyList) {
     NSString *iconName;
     
     //Check for CFBundleIcons (since 5.0)
-    id iconsDict = [appPropertyList objectForKey:@"CFBundleIcons"];
+    id iconsDict = [appPropertyList objectForKey:@"CFBundleIcons~ipad"];
+	//If not found check for iPhone icons
+	if (iconsDict == nil) {
+		iconsDict = [appPropertyList objectForKey:@"CFBundleIcons"];
+	}
     if([iconsDict isKindOfClass:[NSDictionary class]]) {
         id primaryIconDict = [iconsDict objectForKey:@"CFBundlePrimaryIcon"];
         if([primaryIconDict isKindOfClass:[NSDictionary class]]) {
@@ -81,26 +118,20 @@ NSString *mainIconNameForApp(NSDictionary *appPropertyList) {
             icons = tempIcons;
         }
     }
-    
+
     if(icons) {
         //Search some patterns for primary app icon (120x120)
-        NSArray *matches = @[@"120",@"60",@"@2x"];
+        NSArray *matches = @[@"83.5", @"76", @"72", @"60", @"@2x"];
         
         for (NSString *match in matches) {
             NSPredicate *predicate = [NSPredicate predicateWithFormat:@"SELF contains[c] %@",match];
             NSArray *results = [icons filteredArrayUsingPredicate:predicate];
             if([results count]) {
                 iconName = [results firstObject];
-                //Check for @2x existence
-                if([match isEqualToString:@"60"] && ![[iconName pathExtension] length]) {
-                    if(![iconName hasSuffix:@"@2x"]) {
-                        iconName = [iconName stringByAppendingString:@"@2x"];
-                    }
-                }
                 break;
             }
         }
-        
+
         //If no one matches any pattern, just take first item
         if(!iconName) {
             iconName = [icons firstObject];
@@ -112,12 +143,13 @@ NSString *mainIconNameForApp(NSDictionary *appPropertyList) {
             iconName = legacyIcon;
         }
     }
-    
+
     //Load NSImage
     if([iconName length]) {
-        if(![[iconName pathExtension] length]) {
-            iconName = [iconName stringByAppendingPathExtension:@"png"];
-        }
+		if ([iconName.pathExtension isEqualToString:@"png"]) {
+			iconName = [iconName stringByDeletingPathExtension];
+		}
+		NSLog(@"iconName: %@", iconName);
         return iconName;
     }
     

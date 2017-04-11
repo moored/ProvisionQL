@@ -300,7 +300,10 @@ OSStatus GeneratePreviewForURL(void *thisInterface, QLPreviewRequestRef preview,
             }
             [synthesizedInfo setObject:bundleName forKey:@"CFBundleName"];
             [synthesizedInfo setObject:[appPropertyList objectForKey:@"CFBundleIdentifier"] forKey:@"CFBundleIdentifier"];
-            [synthesizedInfo setObject:[appPropertyList objectForKey:@"CFBundleShortVersionString"] forKey:@"CFBundleShortVersionString"];
+			
+			NSString *shortVersionString = [appPropertyList objectForKey:@"CFBundleShortVersionString"] ?: @"";
+            [synthesizedInfo setObject:shortVersionString forKey:@"CFBundleShortVersionString"];
+			
             [synthesizedInfo setObject:[appPropertyList objectForKey:@"CFBundleVersion"] forKey:@"CFBundleVersion"];
             
             NSString *sdkName = [appPropertyList objectForKey:@"DTSDKName"] ?: @"";
@@ -353,7 +356,7 @@ OSStatus GeneratePreviewForURL(void *thisInterface, QLPreviewRequestRef preview,
             
             NSData *imageData = [appIcon TIFFRepresentation];
             NSBitmapImageRep *imageRep = [NSBitmapImageRep imageRepWithData:imageData];
-            imageData = [imageRep representationUsingType:NSPNGFileType properties:nil];
+			imageData = [imageRep representationUsingType:NSPNGFileType properties:@{}];
             NSString *base64 = [imageData base64EncodedStringWithOptions:0];
             [synthesizedInfo setObject:base64 forKey:@"AppIcon"];
             [synthesizedInfo setObject:@"" forKey:@"AppInfo"];
